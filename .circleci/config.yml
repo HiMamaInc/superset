@@ -1,0 +1,111 @@
+# CircleCI for the HiMamaInc/superset fork.
+#
+# release — build the patched Superset image (from THIS fork's source) and
+#           publish it to ECR. Triggered when a release tag of the form vX.Y.Z-N
+#           (e.g. v6.1.0-1) is published, where X.Y.Z is the upstream Superset
+#           version and N is our downstream revision.
+#
+#           Upstream Apache tags (bare X.Y.Z, no "v" prefix and no "-N" revision)
+#           do not match the tag filter, so mirroring upstream tags into the fork
+#           never triggers a build.
+#
+# AWS access mirrors hm-infrastructure: a CircleCI context provides the base
+# ASSUME_ROLE_AWS_* credentials, which we use to sts:assume-role the
+# hm-infrastructure-cicd-role in the Lillio application account (361114779041),
+# then push to ECR.
+#
+# Required CircleCI project setup (one-time, in the UI):
+#   - Attach a context that exports ASSUME_ROLE_AWS_ACCESS_KEY_ID and
+#     ASSUME_ROLE_AWS_SECRET_ACCESS_KEY (same as hm-infrastructure uses, e.g.
+#     `hm-infrastructure-deploy-production`).
+#   - Enable "Trigger builds on tags" / a tag filter is used below.
+
+version: 2.1
+
+orbs:
+  aws-cli: circleci/aws-cli@5.2.0
+
+executors:
+  # Native arm64 builder — production runs on Graviton (t4g) ECS hosts.
+  arm-machine:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: arm.medium
+
+commands:
+  assume-lillio-role:
+    description: Assume hm-infrastructure-cicd-role in the Lillio application account
+    steps:
+      - run:
+          name: Assume role (default profile)
+          command: |
+            ASSUME_ROLE_ARN=arn:aws:iam::361114779041:role/hm-infrastructure-cicd-role
+            CREDENTIALS="$(AWS_ACCESS_KEY_ID=$ASSUME_ROLE_AWS_ACCESS_KEY_ID \
+              AWS_SECRET_ACCESS_KEY=$ASSUME_ROLE_AWS_SECRET_ACCESS_KEY \
+              aws sts assume-role \
+                --role-arn "$ASSUME_ROLE_ARN" \
+                --role-session-name build-$CIRCLE_PROJECT_REPONAME-$CIRCLE_BUILD_NUM \
+              | jq '.Credentials')"
+            aws configure set aws_access_key_id "$(echo "$CREDENTIALS" | jq -r .AccessKeyId)" --profile default
+            aws configure set aws_secret_access_key "$(echo "$CREDENTIALS" | jq -r .SecretAccessKey)" --profile default
+            aws configure set aws_session_token "$(echo "$CREDENTIALS" | jq -r .SessionToken)" --profile default
+
+jobs:
+  build-and-publish:
+    executor: arm-machine
+    environment:
+      AWS_REGION: us-east-1
+      ECR_ACCOUNT: "361114779041"
+      ECR_REPO: lillio-production-superset
+      DOCKER_BUILDKIT: "1"
+    steps:
+      - checkout
+      - aws-cli/install
+      - assume-lillio-role
+      - run:
+          name: Log in to ECR
+          command: |
+            export AWS_PROFILE=default
+            aws ecr get-login-password --region "$AWS_REGION" \
+              | docker login --username AWS --password-stdin \
+                "$ECR_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com"
+      - run:
+          name: Build patched Superset image (arm64) + PostgreSQL driver
+          no_output_timeout: 60m
+          command: |
+            # CIRCLE_TAG is the published release tag, e.g. v6.1.0-1
+            IMG_TAG="$CIRCLE_TAG"                      # v6.1.0-1  (immutable)
+            VER="${CIRCLE_TAG%-*}"                     # v6.1.0
+            LATEST_TAG="${VER}-latest"                 # v6.1.0-latest (moving; tracked by ECS)
+            REPO_URI="$ECR_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO"
+            echo "export IMG_TAG=$IMG_TAG LATEST_TAG=$LATEST_TAG REPO_URI=$REPO_URI" >> "$BASH_ENV"
+            # 1) Build our patched Superset from source (lean = production target).
+            docker build --target lean -t superset-src:"$IMG_TAG" .
+            # 2) Layer the PostgreSQL driver via the fork-owned overlay Dockerfile.
+            docker build \
+              --build-arg BASE_IMAGE=superset-src:"$IMG_TAG" \
+              -f docker/lillio/Dockerfile \
+              -t "$REPO_URI:$IMG_TAG" \
+              docker/lillio
+            docker tag "$REPO_URI:$IMG_TAG" "$REPO_URI:$LATEST_TAG"
+      - run:
+          name: Push image (immutable revision + moving latest)
+          command: |
+            export AWS_PROFILE=default
+            docker push "$REPO_URI:$IMG_TAG"
+            docker push "$REPO_URI:$LATEST_TAG"
+            echo "Published $REPO_URI:$IMG_TAG and $REPO_URI:$LATEST_TAG"
+
+workflows:
+  # Build+publish only on our downstream release tags vX.Y.Z-N. Upstream Apache
+  # tags (bare X.Y.Z) don't match this filter, so they never trigger a build.
+  release:
+    jobs:
+      - build-and-publish:
+          context:
+            - hm-infrastructure-deploy-production
+          filters:
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$/
+            branches:
+              ignore: /.*/
