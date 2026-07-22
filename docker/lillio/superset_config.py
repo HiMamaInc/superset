@@ -39,6 +39,8 @@ FEATURE_FLAGS = {
     "SQLLAB_FORCE_RUN_ASYNC": True,
 }
 
+GUEST_TOKEN_JWT_SECRET = _os.environ["SUPERSET__GUEST_TOKEN_JWT_SECRET"]
+
 
 def get_user_attribute(attr: str, default: Any = None) -> Any:
     try:

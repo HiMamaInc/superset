@@ -24,6 +24,7 @@ def test_lillio_production_config_uses_separate_async_redis_databases(
     monkeypatch.setenv("REDIS_HOST", "cache.example")
     monkeypatch.setenv("REDIS_PASSWORD", "secret")
     monkeypatch.setenv("GLOBAL_ASYNC_QUERIES_JWT_SECRET", "jwt-secret")
+    monkeypatch.setenv("SUPERSET__GUEST_TOKEN_JWT_SECRET", "guest-jwt-secret")
     monkeypatch.setenv("SMTP_USER", "smtp-user")
     monkeypatch.setenv("SMTP_PASSWORD", "smtp-password")
     config = runpy.run_path(
@@ -44,6 +45,7 @@ def test_lillio_production_config_enforces_embedding_and_security(monkeypatch) -
     monkeypatch.setenv("REDIS_HOST", "cache.example")
     monkeypatch.setenv("REDIS_PASSWORD", "secret")
     monkeypatch.setenv("GLOBAL_ASYNC_QUERIES_JWT_SECRET", "jwt-secret")
+    monkeypatch.setenv("SUPERSET__GUEST_TOKEN_JWT_SECRET", "guest-jwt-secret")
     monkeypatch.setenv("SMTP_USER", "smtp-user")
     monkeypatch.setenv("SMTP_PASSWORD", "smtp-password")
     config = runpy.run_path(
@@ -51,6 +53,7 @@ def test_lillio_production_config_enforces_embedding_and_security(monkeypatch) -
     )
 
     assert config["FEATURE_FLAGS"]["EMBEDDED_SUPERSET"] is True
+    assert config["GUEST_TOKEN_JWT_SECRET"] == "guest-jwt-secret"
     assert config["FEATURE_FLAGS"]["SQLLAB_FORCE_RUN_ASYNC"] is True
     assert config["SESSION_SERVER_SIDE"] is True
     assert config["SESSION_COOKIE_SAMESITE"] == "None"
