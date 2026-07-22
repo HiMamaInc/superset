@@ -154,7 +154,14 @@ def GUEST_TOKEN_VALIDATOR_HOOK(body: dict[str, Any]) -> bool:  # noqa: N802
         from flask import request as flask_request
 
         raw_user = (flask_request.json or {}).get("user", {})
-        standard_keys = {"username", "first_name", "last_name"}
+        standard_keys = {
+            "username", "first_name", "last_name",
+            "center_id",
+            "center_ids",
+            "region_id",
+            "region_ids",
+            "childcare_id"
+        }
         custom_fields = {
             key: value for key, value in raw_user.items() if key not in standard_keys
         }
