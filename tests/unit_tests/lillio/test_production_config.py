@@ -54,6 +54,7 @@ def test_lillio_production_config_enforces_embedding_and_security(monkeypatch) -
 
     assert config["FEATURE_FLAGS"]["EMBEDDED_SUPERSET"] is True
     assert config["GUEST_TOKEN_JWT_SECRET"] == "guest-jwt-secret"
+    assert config["AUTH_API_LOGIN_ALLOW_MULTIPLE_PROVIDERS"] is True
     assert config["FEATURE_FLAGS"]["SQLLAB_FORCE_RUN_ASYNC"] is True
     assert config["SESSION_SERVER_SIDE"] is True
     assert config["SESSION_COOKIE_SAMESITE"] == "None"

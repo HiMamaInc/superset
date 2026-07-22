@@ -204,6 +204,10 @@ ALERT_REPORTS_NOTIFICATION_DRY_RUN = False
 WEBDRIVER_BASEURL = _os.environ.get("SUPERSET_PUBLIC_URL", "https://bitool.lillio.com")
 WEBDRIVER_BASEURL_USER_FRIENDLY = WEBDRIVER_BASEURL
 
+# Browser users authenticate through Okta, while the Lillio backend uses its
+# database service account to request embedded-dashboard guest tokens.
+AUTH_API_LOGIN_ALLOW_MULTIPLE_PROVIDERS = True
+
 if _os.environ.get("OAUTH_CLIENT_ID"):
     from flask_appbuilder.security.manager import AUTH_OAUTH
     from custom_sso_security_manager import CustomSsoSecurityManager
