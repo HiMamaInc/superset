@@ -5,9 +5,9 @@
 #             Triggered when a downstream release tag of the form
 #             vX.Y.Z-N (e.g. v6.1.0-1) is published.
 #
-# pr-build  — on every branch push except the upstream `master` mirror, build the
-#             patched image WITHOUT pushing, so PRs get fast feedback that the
-#             Docker build still succeeds after a patch.
+# lillio-ci — on every branch push except the upstream `master` mirror, run the
+#             focused downstream regression tests and build the production image
+#             without pushing it.
 
 version: 2.1
 
@@ -51,6 +51,11 @@ jobs:
       DOCKER_BUILDKIT: "1"
     steps:
       - checkout
+      - run:
+          name: Verify release tag belongs to lillio-master
+          command: |
+            git fetch origin lillio-master
+            git merge-base --is-ancestor "$CIRCLE_SHA1" origin/lillio-master
       - hivemama/notify:
           when: "always"
           event: "production-deploy-started"
@@ -93,9 +98,9 @@ jobs:
               --cache-from "$REPO_URI:$LATEST_TAG" \
               --build-arg BUILDKIT_INLINE_CACHE=1 \
               --build-arg BASE_IMAGE=superset-src:"$IMG_TAG" \
-              -f overlays/lillio/docker/Dockerfile \
+              -f docker/lillio/Dockerfile \
               -t "$REPO_URI:$IMG_TAG" \
-              overlays/lillio/docker
+              docker/lillio
             docker tag "$REPO_URI:$IMG_TAG" "$REPO_URI:$LATEST_TAG"
       - run:
           name: Push image (immutable revision + moving latest)
@@ -177,9 +182,28 @@ jobs:
     steps:
       - checkout
       - run:
-          name: Build patched Superset image (arm64) — validation only, no push
+          name: Run Lillio regression tests and build image (no push)
           no_output_timeout: 60m
           command: |
+            docker build \
+              --build-arg INCLUDE_CHROMIUM=true \
+              --target dev \
+              -t superset-python-tests:pr \
+              .
+            docker run --rm superset-python-tests:pr \
+              pytest -q \
+                tests/unit_tests/lillio/test_production_config.py \
+                tests/unit_tests/lillio/test_embedding_regressions.py
+
+            docker build \
+              --target superset-node-ci \
+              -t superset-frontend-tests:pr \
+              .
+            docker run --rm superset-frontend-tests:pr \
+              npm test -- \
+                src/features/roles/utils.test.ts \
+                src/dashboard/components/nativeFilters/FilterBar/FilterBarSettings/FilterBarSettings.test.tsx
+
             docker build \
               --build-arg INCLUDE_CHROMIUM=true \
               --target lean \
@@ -187,9 +211,9 @@ jobs:
               .
             docker build \
               --build-arg BASE_IMAGE=superset-src:pr \
-              -f overlays/lillio/docker/Dockerfile \
+              -f docker/lillio/Dockerfile \
               -t lillio-superset:pr \
-              overlays/lillio/docker
+              docker/lillio
       - hivemama/notify:
           when: "on_fail"
           event: "failed"
@@ -208,7 +232,7 @@ workflows:
             branches:
               ignore: /.*/
 
-  pr-build:
+  lillio-ci:
     jobs:
       - build-check:
           filters:

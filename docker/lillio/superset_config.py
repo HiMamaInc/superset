@@ -19,6 +19,7 @@ import logging
 import os as _os
 from copy import deepcopy as _deepcopy
 from datetime import timedelta as _timedelta
+from typing import Any, cast
 from urllib.parse import quote as _urlquote
 
 from celery.schedules import crontab as _crontab
@@ -39,7 +40,7 @@ FEATURE_FLAGS = {
 }
 
 
-def get_user_attribute(attr: str, default=None):
+def get_user_attribute(attr: str, default: Any = None) -> Any:
     try:
         from flask_login import current_user
 
@@ -48,7 +49,7 @@ def get_user_attribute(attr: str, default=None):
         return default
 
 
-def guest_attr(attr: str, default=None):
+def guest_attr(attr: str, default: Any = None) -> Any:
     try:
         from flask_login import current_user
 
@@ -67,7 +68,7 @@ JINJA_CONTEXT_ADDONS = {
 }
 
 
-def GUEST_TOKEN_VALIDATOR_HOOK(body: dict) -> bool:
+def GUEST_TOKEN_VALIDATOR_HOOK(body: dict[str, Any]) -> bool:  # noqa: N802
     try:
         from flask import request as flask_request
 
@@ -85,7 +86,7 @@ ENABLE_PROXY_FIX = True
 DEBUG = False
 
 TALISMAN_ENABLED = True
-TALISMAN_CONFIG = _deepcopy(_superset_config.TALISMAN_CONFIG)
+TALISMAN_CONFIG = cast(dict[str, Any], _deepcopy(_superset_config.TALISMAN_CONFIG))
 TALISMAN_CONFIG["content_security_policy"]["frame-ancestors"] = [
     "'self'",
     "https://app.lillio.com",

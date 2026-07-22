@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-# Lillio downstream overlay for the Superset image.
+# Lillio production image built from this fork's source.
 ARG BASE_IMAGE=superset-src:latest
 FROM ${BASE_IMAGE}
 

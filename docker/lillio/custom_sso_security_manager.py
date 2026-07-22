@@ -17,6 +17,7 @@
 """Okta OIDC user-info mapping for Superset."""
 
 import logging
+from typing import Any
 
 from superset.security import SupersetSecurityManager
 
@@ -24,13 +25,13 @@ logger = logging.getLogger(__name__)
 
 
 class CustomSsoSecurityManager(SupersetSecurityManager):
-    def oauth_user_info(self, provider, response=None):
+    def oauth_user_info(self, provider: str, response: Any = None) -> dict[str, Any]:
         if provider != "okta":
             return {}
 
         remote = self.appbuilder.sm.oauth_remotes[provider]
 
-        info = {}
+        info: dict[str, Any] = {}
         try:
             info = remote.userinfo() or {}
         except Exception as exc:  # noqa: BLE001
