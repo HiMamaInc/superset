@@ -190,8 +190,11 @@ jobs:
               --target dev \
               -t superset-python-tests:pr \
               .
-            docker run --rm superset-python-tests:pr \
-              pytest -q \
+            docker run --rm \
+              --mount type=bind,source="$PWD/tests",target=/app/tests,readonly \
+              --mount type=bind,source="$PWD/docker/lillio",target=/app/docker/lillio,readonly \
+              superset-python-tests:pr \
+              pytest -q -p no:cacheprovider \
                 tests/unit_tests/lillio/test_production_config.py \
                 tests/unit_tests/lillio/test_embedding_regressions.py
 
