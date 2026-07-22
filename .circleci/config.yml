@@ -1,9 +1,9 @@
 # CircleCI for the HiMamaInc/superset fork.
 #
-# release   — build the patched Superset image (from THIS fork's source),
+# release   — build the Lillio Superset image from `lillio-master`,
 #             publish it to ECR, deploy it to ECS, and verify production.
-#             Triggered when a downstream release tag of the form
-#             vX.Y.Z-N (e.g. v6.1.0-1) is published.
+#             Triggered by a Lillio-owned semantic release tag such as
+#             `lillio-v1.0.0`; upstream Apache Superset tags are ignored.
 #
 # lillio-ci — on every branch push except the upstream `master` mirror, run the
 #             focused downstream regression tests and build the production image
@@ -70,13 +70,12 @@ jobs:
             aws ecr get-login-password --region "$AWS_REGION" \
               | docker login --username AWS --password-stdin "$REGISTRY"
       - run:
-          name: Build patched Superset image (arm64) + PostgreSQL driver
+          name: Build Lillio Superset image (arm64)
           no_output_timeout: 60m
           command: |
             IMG_TAG="$CIRCLE_TAG"
-            VER="${CIRCLE_TAG%-*}"
-            LATEST_TAG="${VER}-latest"
-            SOURCE_CACHE_TAG="${VER}-source-cache-latest"
+            LATEST_TAG="latest"
+            SOURCE_CACHE_TAG="source-cache"
             REPO_URI="${LILLIO_APPLICATION_ACCOUNT_ID}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO"
             echo "export IMG_TAG=$IMG_TAG LATEST_TAG=$LATEST_TAG SOURCE_CACHE_TAG=$SOURCE_CACHE_TAG REPO_URI=$REPO_URI" >> "$BASH_ENV"
 
@@ -231,7 +230,7 @@ workflows:
             - hm-infrastructure-deploy-production
           filters:
             tags:
-              only: /^v[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$/
+              only: /^lillio-v[0-9]+\.[0-9]+\.[0-9]+$/
             branches:
               ignore: /.*/
 
