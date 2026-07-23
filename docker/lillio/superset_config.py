@@ -24,6 +24,8 @@ from urllib.parse import quote as _urlquote
 
 from celery.schedules import crontab as _crontab
 from flask_caching.backends.rediscache import RedisCache as _RedisCache
+from jinja2 import pass_context as _pass_context
+from jinja2.runtime import Context as _JinjaContext, Undefined as _JinjaUndefined
 from redis import Redis as _Redis
 from superset import config as _superset_config
 
@@ -42,26 +44,54 @@ FEATURE_FLAGS = {
 GUEST_TOKEN_JWT_SECRET = _os.environ["SUPERSET__GUEST_TOKEN_JWT_SECRET"]
 
 
-def get_user_attribute(attr: str, default: Any = None) -> Any:
+def _register_cache_key(ctx: _JinjaContext, value: Any) -> None:
+    """
+    Fold ``value`` into the query's cache key via the sibling ``cache_key_wrapper``
+    macro that Superset's ``ExtraCache`` exposes in the same template context.
+
+    Without this, a per-guest/per-user value returned by a JINJA_CONTEXT_ADDONS
+    function never varies the cache key, so every viewer's query result is
+    cached under the same key: the first value computed "wins" and gets served
+    to everyone else until the cache entry expires.
+    """
+    cache_key_wrapper = ctx.resolve("cache_key_wrapper")
+    # Jinja's base Undefined defines __call__ (it raises when actually invoked),
+    # so `callable(...)` alone can't tell "missing from context" apart from
+    # "a real callable" -- check for Undefined explicitly.
+    if callable(cache_key_wrapper) and not isinstance(
+        cache_key_wrapper, _JinjaUndefined
+    ):
+        hashable_value = tuple(value) if isinstance(value, list) else value
+        cache_key_wrapper(hashable_value)
+
+
+@_pass_context
+def get_user_attribute(ctx: _JinjaContext, attr: str, default: Any = None) -> Any:
     try:
         from flask_login import current_user
 
-        return getattr(current_user, attr, default)
+        value = getattr(current_user, attr, default)
     except Exception:  # noqa: BLE001
-        return default
+        value = default
+    _register_cache_key(ctx, value)
+    return value
 
 
-def guest_attr(attr: str, default: Any = None) -> Any:
+@_pass_context
+def guest_attr(ctx: _JinjaContext, attr: str, default: Any = None) -> Any:
     try:
         from flask_login import current_user
 
         if getattr(current_user, "is_guest_user", False):
             token_user = current_user.guest_token.get("user", {})
-            return token_user.get(attr, default)
-        return default
+            value = token_user.get(attr, default)
+        else:
+            value = default
     except Exception as exc:  # noqa: BLE001
         _jinja_logger.warning("[guest_attr] ERROR attr=%r exc=%r", attr, exc)
-        return default
+        value = default
+    _register_cache_key(ctx, value)
+    return value
 
 
 JINJA_CONTEXT_ADDONS = {
@@ -107,6 +137,8 @@ SESSION_COOKIE_SAMESITE = "None"
 SESSION_SERVER_SIDE = True
 SESSION_TYPE = "redis"
 SESSION_USE_SIGNER = True
+
+REDIS_RESULTS_DB = _os.getenv("REDIS_RESULTS_DB", "2")
 SESSION_REDIS = _Redis(
     host=_os.environ["REDIS_HOST"],
     port=int(_os.environ.get("REDIS_PORT", "6379")),
@@ -185,9 +217,12 @@ GLOBAL_ASYNC_QUERIES_CACHE_BACKEND = {
 
 DATA_CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
-    "CACHE_REDIS_URL": _rediss_url(6),
     "CACHE_KEY_PREFIX": "superset_data_",
     "CACHE_DEFAULT_TIMEOUT": 3600,
+    "CACHE_REDIS_HOST": _redis_host,
+    "CACHE_REDIS_PORT": _redis_port,
+    "CACHE_REDIS_DB": REDIS_RESULTS_DB,
+    "CACHE_REDIS_URL": _rediss_url(6),
 }
 
 # Backs `cache_manager.cache` (the "CACHE_CONFIG" default cache), which the
