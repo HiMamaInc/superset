@@ -187,8 +187,17 @@ DATA_CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
     "CACHE_REDIS_URL": _rediss_url(6),
     "CACHE_KEY_PREFIX": "superset_data_",
-    "CACHE_DEFAULT_TIMEOUT": 86400,
+    "CACHE_DEFAULT_TIMEOUT": 3600,
 }
+
+# Backs `cache_manager.cache` (the "CACHE_CONFIG" default cache), which the
+# GLOBAL_ASYNC_QUERIES flow uses to bridge the Celery worker and the web
+# process: the worker stores the query context form under a "qc-" key here,
+# and the client's follow-up GET /api/v1/chart/data/<cache_key> reads it back
+# to re-run and return the query. Left unset, this falls back to Superset's
+# default NullCache, so that lookup always misses and the client sees a 404.
+CACHE_CONFIG = DATA_CACHE_CONFIG
+
 
 SMTP_HOST = _os.environ.get("SMTP_HOST", "email-smtp.us-east-1.amazonaws.com")
 SMTP_PORT = int(_os.environ.get("SMTP_PORT", "587"))
