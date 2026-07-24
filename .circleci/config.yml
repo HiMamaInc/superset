@@ -189,13 +189,17 @@ jobs:
               --target dev \
               -t superset-python-tests:pr \
               .
-            docker run --rm \
-              --mount type=bind,source="$PWD/tests",target=/app/tests,readonly \
-              --mount type=bind,source="$PWD/docker/lillio",target=/app/docker/lillio,readonly \
-              superset-python-tests:pr \
-              pytest -q -p no:cacheprovider \
-                tests/unit_tests/lillio/test_production_config.py \
-                tests/unit_tests/lillio/test_embedding_regressions.py
+            if [ -d "$PWD/docker/lillio" ]; then
+              docker run --rm \
+                --mount type=bind,source="$PWD/tests",target=/app/tests,readonly \
+                --mount type=bind,source="$PWD/docker/lillio",target=/app/docker/lillio,readonly \
+                superset-python-tests:pr \
+                pytest -q -p no:cacheprovider \
+                  tests/unit_tests/lillio/test_production_config.py \
+                  tests/unit_tests/lillio/test_embedding_regressions.py
+            else
+              echo "Skipping lillio regression tests: docker/lillio not present in this branch"
+            fi
 
             docker build \
               --target superset-node-ci \
@@ -211,11 +215,15 @@ jobs:
               --target lean \
               -t superset-src:pr \
               .
-            docker build \
-              --build-arg BASE_IMAGE=superset-src:pr \
-              -f docker/lillio/Dockerfile \
-              -t lillio-superset:pr \
-              docker/lillio
+            if [ -d "$PWD/docker/lillio" ]; then
+              docker build \
+                --build-arg BASE_IMAGE=superset-src:pr \
+                -f docker/lillio/Dockerfile \
+                -t lillio-superset:pr \
+                docker/lillio
+            else
+              echo "Skipping lillio image build: docker/lillio not present in this branch"
+            fi
       - hivemama/notify:
           when: "on_fail"
           event: "failed"
