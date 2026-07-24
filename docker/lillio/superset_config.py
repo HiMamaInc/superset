@@ -138,7 +138,6 @@ SESSION_SERVER_SIDE = True
 SESSION_TYPE = "redis"
 SESSION_USE_SIGNER = True
 
-REDIS_RESULTS_DB = _os.getenv("REDIS_RESULTS_DB", "2")
 SESSION_REDIS = _Redis(
     host=_os.environ["REDIS_HOST"],
     port=int(_os.environ.get("REDIS_PORT", "6379")),
@@ -163,6 +162,12 @@ def _rediss_url(database: int) -> str:
 class CeleryConfig:  # pylint: disable=too-few-public-methods
     broker_url = _rediss_url(1)
     result_backend = _rediss_url(2)
+    # The default prefork pool forks worker child processes, and OpenSSL
+    # connection state isn't fork-safe: an SSL connection to the (rediss://)
+    # broker opened around fork time can leave child processes with a
+    # corrupted SSL context, hanging silently during startup instead of
+    # raising. Threads avoid forking after the broker connection is made.
+    worker_pool = "threads"
     imports = (
         "superset.sql_lab",
         "superset.tasks.scheduler",
@@ -219,9 +224,6 @@ DATA_CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
     "CACHE_KEY_PREFIX": "superset_data_",
     "CACHE_DEFAULT_TIMEOUT": 3600,
-    "CACHE_REDIS_HOST": _redis_host,
-    "CACHE_REDIS_PORT": _redis_port,
-    "CACHE_REDIS_DB": REDIS_RESULTS_DB,
     "CACHE_REDIS_URL": _rediss_url(6),
 }
 
