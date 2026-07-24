@@ -63,6 +63,11 @@ def _register_cache_key(ctx: _JinjaContext, value: Any) -> None:
     ):
         hashable_value = tuple(value) if isinstance(value, list) else value
         cache_key_wrapper(hashable_value)
+        # TEMPORARY: diagnosing a write/read cache-key mismatch (PDE-3676).
+        # Remove once resolved.
+        _jinja_logger.info(
+            "[cache_key_debug] registered=%r pid=%s", hashable_value, _os.getpid()
+        )
 
 
 @_pass_context
@@ -87,6 +92,15 @@ def guest_attr(ctx: _JinjaContext, attr: str, default: Any = None) -> Any:
             value = token_user.get(attr, default)
         else:
             value = default
+        # TEMPORARY: diagnosing a write/read cache-key mismatch (PDE-3676).
+        # Remove once resolved.
+        _jinja_logger.info(
+            "[guest_attr_debug] attr=%r is_guest=%r value=%r pid=%s",
+            attr,
+            getattr(current_user, "is_guest_user", False),
+            value,
+            _os.getpid(),
+        )
     except Exception as exc:  # noqa: BLE001
         _jinja_logger.warning("[guest_attr] ERROR attr=%r exc=%r", attr, exc)
         value = default
