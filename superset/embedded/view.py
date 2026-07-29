@@ -18,7 +18,7 @@ from typing import Callable
 
 from flask import abort, current_app, request
 from flask_appbuilder import expose
-from flask_login import AnonymousUserMixin, login_user
+from flask_login import AnonymousUserMixin, current_user, login_user
 from flask_wtf.csrf import same_origin
 
 from superset import event_logger, is_feature_enabled
@@ -81,10 +81,17 @@ class EmbeddedView(BaseSupersetView):
         }:
             abort(403)
 
-        # Log in as an anonymous user, just for this view.
-        # This view needs to be visible to all users,
-        # and building the page fails if g.user and/or ctx.user aren't present.
-        login_user(AnonymousUserMixin(), force=True)
+        # This view needs to be visible to all users, and building the page
+        # fails if g.user and/or ctx.user aren't present -- so log in as an
+        # anonymous user if (and only if) nobody is already authenticated.
+        # This endpoint's content is served from Superset's own domain even
+        # when embedded cross-origin, so it shares a cookie jar with any
+        # direct Superset session on that domain. Forcing an anonymous login
+        # unconditionally would silently overwrite -- and log out -- a real
+        # session (e.g. an admin who also has an embedded dashboard open in
+        # the same browser).
+        if not current_user.is_authenticated:
+            login_user(AnonymousUserMixin(), force=True)
 
         add_extra_log_payload(
             embedded_dashboard_id=uuid,
