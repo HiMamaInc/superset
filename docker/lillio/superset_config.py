@@ -47,15 +47,15 @@ _jinja_logger = logging.getLogger("superset.jinja_context")
 # can use a simple file-mtime check instead of `celery inspect ping`, which
 # requires loading the full Flask app on every health check interval.
 # ---------------------------------------------------------------------------
-_HC_READY_FILE = "/tmp/celery_worker_ready"
-_HC_ALIVE_FILE = "/tmp/celery_worker_alive"
+_HC_READY_FILE = "/tmp/celery_worker_ready"  # noqa: S108
+_HC_ALIVE_FILE = "/tmp/celery_worker_alive"  # noqa: S108
 _HC_HEARTBEAT_INTERVAL = 10  # seconds
 _hc_liveness_thread = None
 _hc_liveness_stop_event = None
 
 
 @_worker_ready.connect
-def _hc_create_ready_file(sender, **kwargs):  # noqa: ANN001
+def _hc_create_ready_file(sender: Any = None, **kwargs: Any) -> None:
     try:
         open(_HC_READY_FILE, "w").close()  # noqa: WPS515
     except Exception as exc:  # noqa: BLE001
@@ -63,7 +63,7 @@ def _hc_create_ready_file(sender, **kwargs):  # noqa: ANN001
 
 
 @_worker_shutdown.connect
-def _hc_remove_ready_file(sender, **kwargs):  # noqa: ANN001
+def _hc_remove_ready_file(sender: Any = None, **kwargs: Any) -> None:
     global _hc_liveness_thread, _hc_liveness_stop_event  # noqa: PLW0603
     if _hc_liveness_stop_event:
         _hc_liveness_stop_event.set()
@@ -78,7 +78,7 @@ def _hc_remove_ready_file(sender, **kwargs):  # noqa: ANN001
 
 
 @_worker_init.connect
-def _hc_start_liveness_heartbeat(sender, **kwargs):  # noqa: ANN001
+def _hc_start_liveness_heartbeat(sender: Any = None, **kwargs: Any) -> None:
     global _hc_liveness_thread, _hc_liveness_stop_event  # noqa: PLW0603
     _hc_liveness_stop_event = _threading.Event()
 
@@ -94,13 +94,23 @@ def _hc_start_liveness_heartbeat(sender, **kwargs):  # noqa: ANN001
     _hc_liveness_thread = _threading.Thread(target=_beat, daemon=True)
     _hc_liveness_thread.start()
 
+
 FEATURE_FLAGS = {
     "ALERT_REPORTS": True,
+    "DATE_RANGE_TIMESHIFTS_ENABLED": True,
     "EMBEDDED_SUPERSET": True,
     "ENABLE_TEMPLATE_PROCESSING": True,
     "GLOBAL_ASYNC_QUERIES": True,
     "PLAYWRIGHT_REPORTS_AND_THUMBNAILS": True,
     "SQLLAB_FORCE_RUN_ASYNC": True,
+    # A core migration (add_granular_export_permissions) unconditionally
+    # deletes the legacy "can_csv on Superset" permission when it runs,
+    # regardless of this flag. With the flag left off, the runtime code
+    # still checks for that now-deleted permission, so CSV/chart export
+    # can never be granted to any role. Turning this on switches the
+    # runtime checks to the granular permissions the migration actually
+    # created (can_export_data / can_export_image / can_copy_clipboard).
+    "GRANULAR_EXPORT_CONTROLS": True,
 }
 
 GUEST_TOKEN_JWT_SECRET = _os.environ["SUPERSET__GUEST_TOKEN_JWT_SECRET"]
