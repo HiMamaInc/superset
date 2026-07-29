@@ -24,6 +24,14 @@ import {
 } from '../util/componentTypes';
 import { DASHBOARD_ROOT_ID } from '../util/constants';
 
+jest.mock('@superset-ui/core', () => ({
+  ...jest.requireActual('@superset-ui/core'),
+  isFeatureEnabled: jest.fn(),
+}));
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { isFeatureEnabled } = require('@superset-ui/core');
+
 /**
  * Regression guard for the follow-up to PR #39417 / PR #41832: the default
  * active-tab path must be seeded into `dashboardState.activeTabs` at hydration
@@ -64,12 +72,13 @@ const hydrate = (
   overrides: {
     activeTabs?: string[] | null;
     dashboardState?: Record<string, unknown>;
+    roles?: Record<string, string[][]>;
   } = {},
 ) => {
   const dispatch = jest.fn((action: unknown) => action);
   const getState = () =>
     ({
-      user: { roles: {}, userId: 1 },
+      user: { roles: overrides.roles ?? {}, userId: 1 },
       common: { conf: {} },
       dashboardState: overrides.dashboardState ?? {},
     }) as any;
@@ -273,4 +282,65 @@ test('a permalink activeTabs: [] (empty but present) wins and seeds []', () => {
   const action = hydrate(flatTabsPositionData, { activeTabs: [] });
 
   expect(action.data.dashboardState.activeTabs).toEqual([]);
+});
+
+/**
+ * Regression guard: a core migration (add_granular_export_permissions)
+ * unconditionally deletes the legacy "can_csv on Superset" permission-view
+ * when it runs, regardless of GRANULAR_EXPORT_CONTROLS. Checking only
+ * can_csv here would leave chart/dashboard export permanently ungrantable
+ * to any role on a deployment that's run that migration with the flag
+ * enabled. These mirror usePermissions.test.tsx's canDownload cases for the
+ * same underlying branching logic.
+ */
+const rolesWithAllPerms = {
+  Admin: [
+    ['can_csv', 'Superset'],
+    ['can_export_data', 'Superset'],
+  ],
+};
+
+const rolesWithoutExportPerms = {
+  Gamma: [['can_explore', 'Superset']],
+};
+
+const rolesWithLegacyCsvOnly = {
+  CustomRole: [['can_csv', 'Superset']],
+};
+
+test('superset_can_download uses can_export_data when GRANULAR_EXPORT_CONTROLS enabled', () => {
+  isFeatureEnabled.mockReturnValue(true);
+  const action = hydrate(flatTabsPositionData, { roles: rolesWithAllPerms });
+
+  expect(action.data.dashboardInfo.superset_can_download).toBe(true);
+});
+
+test('superset_can_download uses can_csv when GRANULAR_EXPORT_CONTROLS disabled', () => {
+  isFeatureEnabled.mockReturnValue(false);
+  const action = hydrate(flatTabsPositionData, {
+    roles: rolesWithLegacyCsvOnly,
+  });
+
+  expect(action.data.dashboardInfo.superset_can_download).toBe(true);
+});
+
+test('superset_can_download false when GRANULAR_EXPORT_CONTROLS enabled but no can_export_data', () => {
+  isFeatureEnabled.mockReturnValue(true);
+  const action = hydrate(flatTabsPositionData, {
+    roles: rolesWithoutExportPerms,
+  });
+
+  expect(action.data.dashboardInfo.superset_can_download).toBe(false);
+});
+
+test('superset_can_download false when GRANULAR_EXPORT_CONTROLS enabled and role only has legacy can_csv', () => {
+  // The core bug this fix addresses: can_csv alone must not satisfy the
+  // check once the flag is on, since the migration deletes that permission
+  // view regardless of the flag -- only the granular permission counts.
+  isFeatureEnabled.mockReturnValue(true);
+  const action = hydrate(flatTabsPositionData, {
+    roles: rolesWithLegacyCsvOnly,
+  });
+
+  expect(action.data.dashboardInfo.superset_can_download).toBe(false);
 });

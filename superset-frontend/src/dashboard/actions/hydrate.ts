@@ -17,7 +17,12 @@
  * under the License.
  */
 /* eslint-disable camelcase */
-import { DataMaskStateWithId, JsonObject } from '@superset-ui/core';
+import {
+  DataMaskStateWithId,
+  FeatureFlag,
+  isFeatureEnabled,
+  JsonObject,
+} from '@superset-ui/core';
 import type { AnyAction } from 'redux';
 import type { ThunkDispatch } from 'redux-thunk';
 // eslint-disable-next-line import/no-extraneous-dependencies
@@ -369,7 +374,18 @@ export const hydrateDashboard =
             'Superset',
             roles,
           ),
-          superset_can_download: findPermission('can_csv', 'Superset', roles),
+          // A core migration (add_granular_export_permissions) unconditionally
+          // deletes the legacy "can_csv on Superset" permission-view when it
+          // runs, regardless of GRANULAR_EXPORT_CONTROLS. Checking only
+          // can_csv here would leave chart/dashboard export permanently
+          // ungrantable to any role on any deployment that's run that
+          // migration with the flag enabled -- mirror usePermissions.ts's
+          // canExportData branching instead.
+          superset_can_download: isFeatureEnabled(
+            FeatureFlag.GranularExportControls,
+          )
+            ? findPermission('can_export_data', 'Superset', roles)
+            : findPermission('can_csv', 'Superset', roles),
           common: {
             // legacy, please use state.common instead
             conf: common?.conf,
