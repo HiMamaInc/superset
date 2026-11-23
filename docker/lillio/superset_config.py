@@ -115,6 +115,14 @@ FEATURE_FLAGS = {
 
 GUEST_TOKEN_JWT_SECRET = _os.environ["SUPERSET__GUEST_TOKEN_JWT_SECRET"]
 
+# Embedded (guest-token) viewers get only this role's permissions. Without
+# it, GUEST_ROLE_NAME defaults to "Public", which Flask-AppBuilder also
+# applies to unauthenticated requests (AUTH_ROLE_PUBLIC defaults to
+# "Public"), so any permission granted for embedding would be exposed to
+# anonymous users. A dedicated role lets the Public role stay empty.
+# The role must exist with this exact name, or guest authentication fails.
+GUEST_ROLE_NAME = "embedding"
+
 
 def _register_cache_key(ctx: _JinjaContext, value: Any) -> None:
     """

@@ -195,12 +195,15 @@ RUN mkdir -p \
       requirements \
     && touch superset/static/version_info.json
 
-# Optionally install Playwright and the headless Chromium used for screenshots
+# Optionally install Playwright and the headless Chromium used for screenshots.
+# Playwright's bundled Node needs libatomic before `playwright install-deps`
+# can run.
 ENV PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/playwright-browsers
 
 ARG INCLUDE_CHROMIUM="false"
 RUN --mount=type=cache,target=${SUPERSET_HOME}/.cache/uv \
     if [ "${INCLUDE_CHROMIUM}" = "true" ]; then \
+        /app/docker/apt-install.sh libatomic1 && \
         uv pip install playwright && \
         playwright install-deps && \
         playwright install chromium; \
